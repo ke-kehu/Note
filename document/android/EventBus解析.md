@@ -5,7 +5,6 @@
 观察者模式定义了一种一对多的依赖关系，让多个观察者对象同时监听某一个主题对象。这个主题对象在状态上发生变化时，会通知所有观察者对象，使它们能够自动更新自己。因为观察者模式非常常见，所以在jdk中已经帮我们实现了观察者模式，只要继承相对应的类（Observable、Observer）就可以快速地实现观察者模式。
 
 ```
-
 public class Observable {
     private boolean changed = false;
     private Vector obs = new Vector();
@@ -24,11 +23,9 @@ public class Observable {
     public synchronized void deleteObserver(Observer var1) {
         this.obs.removeElement(var1);
     }
-
     public void notifyObservers() {
         this.notifyObservers((Object)null);
     }
-
     public void notifyObservers(Object var1) {
         Object[] var2;
         synchronized(this) {
@@ -41,7 +38,6 @@ public class Observable {
         for(int var3 = var2.length - 1; var3 >= 0; --var3) {
             ((Observer)var2[var3]).update(this, var1);
         }
-
     }
     public synchronized void deleteObservers() {
         this.obs.removeAllElements();
@@ -113,3 +109,227 @@ Android系统的广播和开源库EventBus其实也是观察者模式的一种�
  * onEvnetBackground:如果使用onEventBackgrond作为订阅函数，那么如果事件是在UI线程中发布出来的，那么onEventBackground就会在子线程中运行，如果事件本来就是子线程中发布出来的，那么onEventBackground函数直接在该子线程中执行
 
  * onEventAsync：使用这个函数作为订阅函数，那么无论事件在哪个线程发布，都会创建新的子线程在执行onEventAsync
+
+###4.源码分析
+1.源码中一些重要的方法
+* getDefault 单例模式
+* register(Object subscriber, boolean sticky, int priority) 所有的注册方法最好都会调用这个方法
+ ```
+ private synchronized void register(Object subscriber, boolean sticky, int priority) {
+        //获取subscriber类中声明过的方法
+        List subscriberMethods=this.subscriberMethodFinder.findSubscriberMethods(subscriber.getClass());
+        Iterator var5 = subscriberMethods.iterator();
+        while(var5.hasNext()) {
+            SubscriberMethod subscriberMethod = (SubscriberMethod)var5.next();
+            this.subscribe(subscriber, subscriberMethod, sticky, priority);
+        }
+    }
+ ```
+* List<SubscriberMethod> findSubscriberMethods(Class<?> subscriberClass) 获取类中的订阅方法
+```
+ List<SubscriberMethod> findSubscriberMethods(Class<?> subscriberClass) {
+        String key = subscriberClass.getName();//类明作为map的key
+        Map clazz = methodCache;
+        List subscriberMethods;
+        synchronized(methodCache) {
+            subscriberMethods = (List)methodCache.get(key);
+        }
+
+        if(subscriberMethods != null) {
+            return subscriberMethods;
+        } else {
+            ArrayList subscriberMethods1 = new ArrayList();
+            Class clazz1 = subscriberClass;
+            HashMap eventTypesFound = new HashMap();
+
+            for(StringBuilder methodKeyBuilder = new StringBuilder(); clazz1 != null; clazz1 = clazz1.getSuperclass()) {
+                String name = clazz1.getName();
+                //过滤掉系统类
+                if(name.startsWith("java.") || name.startsWith("javax.") || name.startsWith("android.")) {
+                    break;
+                }
+
+                try {
+                    Method[] th = clazz1.getDeclaredMethods();//利用反射获取所有方法
+                    this.filterSubscriberMethods(subscriberMethods1, eventTypesFound, methodKeyBuilder, th);//过滤出onEvent开头的方法 
+                } catch (Throwable var13) {
+                    var13.printStackTrace();
+                    Method[] methods = subscriberClass.getMethods();
+                    subscriberMethods1.clear();
+                    eventTypesFound.clear();
+                    this.filterSubscriberMethods(subscriberMethods1, eventTypesFound, methodKeyBuilder, methods);
+                    break;
+                }
+            }
+
+            if(subscriberMethods1.isEmpty()) {
+                throw new EventBusException("Subscriber " + subscriberClass + " has no public methods called " + "onEvent");
+            } else {
+                Map name1 = methodCache;
+                synchronized(methodCache) {
+                    methodCache.put(key, subscriberMethods1);//存入缓存
+                    return subscriberMethods1;
+                }
+            }
+        }
+    }
+```
+*     private void filterSubscriberMethods(List<SubscriberMethod> subscriberMethods, HashMap<String, Class> eventTypesFound, StringBuilder methodKeyBuilder, Method[] methods) 过滤出onEvent开头的订阅方法
+```
+private void filterSubscriberMethods(List<SubscriberMethod> subscriberMethods, HashMap<String, Class> eventTypesFound, StringBuilder methodKeyBuilder, Method[] methods) {
+        Method[] var5 = methods;
+        int var6 = methods.length;
+        for(int var7 = 0; var7 < var6; ++var7) {
+            Method method = var5[var7];
+            String methodName = method.getName();
+            if(methodName.startsWith("onEvent")) {//onEvent开头的函数
+                int modifiers = method.getModifiers();
+                Class methodClass = method.getDeclaringClass();
+                if((modifiers & 1) != 0 && (modifiers & 5192) == 0) {
+                    Class[] parameterTypes = method.getParameterTypes();
+                    if(parameterTypes.length == 1) {//onEvent方法只能有一个参数，和用法符合
+                        ThreadMode threadMode = this.getThreadMode(methodClass, method, methodName);
+                        if(threadMode != null) {
+                            Class eventType = parameterTypes[0];
+                            methodKeyBuilder.setLength(0);
+                            methodKeyBuilder.append(methodName);
+                            methodKeyBuilder.append('>').append(eventType.getName());//拼接方法名和参数名
+                            String methodKey = methodKeyBuilder.toString();
+                            Class methodClassOld = (Class)eventTypesFound.put(methodKey, methodClass);
+                            if(methodClassOld != null && !methodClassOld.isAssignableFrom(methodClass)) {
+                                eventTypesFound.put(methodKey, methodClassOld);
+                            } else {
+                                subscriberMethods.add(new SubscriberMethod(method, threadMode, eventType));
+                            }
+                        }
+                    }
+                } else if(!this.skipMethodVerificationForClasses.containsKey(methodClass)) {
+                    Log.d(EventBus.TAG, "Skipping method (not public, static or abstract): " + methodClass + "." + methodName);
+                }
+            }
+        }
+
+    }
+```
+* private void subscribe(Object subscriber, SubscriberMethod subscriberMethod, boolean sticky, int priority) 订阅
+```
+ private void subscribe(Object subscriber, SubscriberMethod subscriberMethod, boolean sticky, int priority) {
+        Class eventType = subscriberMethod.eventType;
+        //通过订阅事件类型，找到所有的订阅（Subscription）,订阅中包含了订阅者，订阅方法
+        CopyOnWriteArrayList subscriptions = (CopyOnWriteArrayList)this.subscriptionsByEventType.get(eventType);
+        Subscription newSubscription = new Subscription(subscriber, subscriberMethod, priority);//创建一个新的订阅  
+        //将新建的订阅加入到这个事件类型对应的所有订阅列表 
+        if(subscriptions == null) {
+            subscriptions = new CopyOnWriteArrayList();
+            this.subscriptionsByEventType.put(eventType, subscriptions);
+        } else if(subscriptions.contains(newSubscription)) {//如果有订阅列表，检查是否已经加入过 
+            throw new EventBusException("Subscriber " + subscriber.getClass() + " already registered to event " + eventType);
+        }
+
+        int size = subscriptions.size();
+
+        for(int subscribedEvents = 0; subscribedEvents <= size; ++subscribedEvents) {
+            if(subscribedEvents == size || newSubscription.priority > ((Subscription)subscriptions.get(subscribedEvents)).priority) {
+                subscriptions.add(subscribedEvents, newSubscription);
+                break;
+            }
+        }
+
+        Object var15 = (List)this.typesBySubscriber.get(subscriber);
+        if(var15 == null) {
+            var15 = new ArrayList();
+            this.typesBySubscriber.put(subscriber, var15);
+        }
+
+        ((List)var15).add(eventType);
+        if(sticky) {
+            if(this.eventInheritance) {
+                Set stickyEvent = this.stickyEvents.entrySet();
+                Iterator var11 = stickyEvent.iterator();
+
+                while(var11.hasNext()) {
+                    Entry entry = (Entry)var11.next();
+                    Class candidateEventType = (Class)entry.getKey();
+                    if(eventType.isAssignableFrom(candidateEventType)) {
+                        Object stickyEvent1 = entry.getValue();
+                        this.checkPostStickyEventToSubscription(newSubscription, stickyEvent1);
+                    }
+                }
+            } else {
+                Object var16 = this.stickyEvents.get(eventType);
+                this.checkPostStickyEventToSubscription(newSubscription, var16);
+            }
+        }
+
+    }
+```
+* private boolean postSingleEventForEventType(Object event, EventBus.PostingThreadState postingState, Class<?> eventClass) 分发事件,所有的post方法最后都会调用这个方法
+```
+ private boolean postSingleEventForEventType(Object event, EventBus.PostingThreadState postingState, Class<?> eventClass) {
+        CopyOnWriteArrayList subscriptions;
+        synchronized(this) {
+            subscriptions = (CopyOnWriteArrayList)this.subscriptionsByEventType.get(eventClass);//获取对应的订阅方法
+        }
+        if(subscriptions != null && !subscriptions.isEmpty()) {
+            Iterator var5 = subscriptions.iterator();
+            while(var5.hasNext()) {
+                Subscription subscription = (Subscription)var5.next();
+                postingState.event = event;
+                postingState.subscription = subscription;
+                boolean aborted = false;
+                try {
+                    this.postToSubscription(subscription, event, postingState.isMainThread);//对每个订阅调用该方法  
+                    aborted = postingState.canceled;
+                } finally {
+                    postingState.event = null;
+                    postingState.subscription = null;
+                    postingState.canceled = false;
+                }
+                if(aborted) {
+                    break;
+                }
+            }
+            return true;
+        } else {
+            return false;
+        }
+    }
+```
+* private void postToSubscription(Subscription subscription, Object event, boolean isMainThread)
+```
+ private void postToSubscription(Subscription subscription, Object event, boolean isMainThread) {
+        //第一个参数就是传入的订阅，第二个参数就是对于的分发事件，第三个参数非常关键：是否在主线程
+        switch (subscription.subscriberMethod.threadMode) {
+        //这个threadMode是根据onEvent,onEventMainThread,onEventBackground,onEventAsync决定的
+        case PostThread:
+            //利用反射直接调用
+            invokeSubscriber(subscription, event);
+            break;
+        case MainThread:
+            if (isMainThread) {
+                //如果直接在主线程，那么直接在本现场中调用订阅函数
+                invokeSubscriber(subscription, event);
+            } else {
+                //如果不在主线程，那么通过handler实现在主线程中执行，具体我就不跟踪了
+                mainThreadPoster.enqueue(subscription, event);
+            }
+            break;
+        case BackgroundThread:
+            if (isMainThread) {
+                //如果主线程，创建一个runnable丢入线程池中
+                backgroundPoster.enqueue(subscription, event);
+            } else {
+                //如果子线程，利用反射直接调用
+                invokeSubscriber(subscription, event);
+            }
+            break;
+        case Async:
+            //不论什么线程，直接丢入线程池
+            asyncPoster.enqueue(subscription, event);
+            break;
+        default:
+            throw new IllegalStateException("Unknown thread mode: " + subscription.subscriberMethod.threadMode);
+        }
+
+    }
+```
