@@ -310,7 +310,7 @@ private void filterSubscriberMethods(List<SubscriberMethod> subscriberMethods, H
                 //如果直接在主线程，那么直接在本现场中调用订阅函数
                 invokeSubscriber(subscription, event);
             } else {
-                //如果不在主线程，那么通过handler实现在主线程中执行，具体我就不跟踪了
+                //如果不在主线程，那么通过handler实现在主线程中执行
                 mainThreadPoster.enqueue(subscription, event);
             }
             break;
@@ -331,5 +331,21 @@ private void filterSubscriberMethods(List<SubscriberMethod> subscriberMethods, H
             throw new IllegalStateException("Unknown thread mode: " + subscription.subscriberMethod.threadMode);
         }
 
+    }
+```
+* public synchronized void unregister(Object subscriber)解绑订阅
+```
+   public synchronized void unregister(Object subscriber) {
+        List subscribedTypes = (List)this.typesBySubscriber.get(subscriber);//
+        if(subscribedTypes != null) {
+            Iterator var3 = subscribedTypes.iterator();
+            while(var3.hasNext()) {
+                Class eventType = (Class)var3.next();
+                this.unsubscribeByEventType(subscriber, eventType);
+            }
+            this.typesBySubscriber.remove(subscriber);
+        } else {
+            Log.w(TAG, "Subscriber to unregister was not registered before: " + subscriber.getClass());
+        }
     }
 ```
