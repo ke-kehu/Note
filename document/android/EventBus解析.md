@@ -88,11 +88,33 @@ public interface Observer {
 
 ```
 
-###2.EventBus和系统广播
+###2.java反射机制
+1.定义：在运行状态中，对于任意一个类，都能够知道这个类的所有属性和方法；对于任意一个对象，都能够调用它的任意一个方法和属性；这种动态获取的信息以及动态调用对象的方法的功能称为java语言的反射机制。
+2.EventBus中用的比较多的有
+* getDeclaredMethods()//获取类或者接口的所有方法，不包括继承的方法
+* method.getName()//获取方法名，用来过滤出onEvent开头的方法
+* method.getModifiers()//方法返回int类型值表示该字段的修饰符，EventBus中用于过滤掉非  public、static、abstract方法
+PUBLIC: 1
+PRIVATE: 2
+PROTECTED: 4
+STATIC: 8
+FINAL: 16
+SYNCHRONIZED: 32
+VOLATILE: 64
+TRANSIENT: 128
+NATIVE: 256
+INTERFACE: 512
+ABSTRACT: 1024
+STRICT: 2048
+* method.getParameterTypes()//获取方法的参数名，用作key，后面会讲到
+* method.invoke(subscription.subscriber, new Object[]{event})//执行对应的方法，在EventBus中就是执行 onEvent（）、onEventMainThread（）、onEvnetBackground（）、onEventAsync（）方法
+
+
+###3.EventBus和系统广播
 
 Android系统的广播和开源库EventBus其实也是观察者模式的一种实现，可以做到不同组件之间相互通信。EventBus能够实现的功能系统广播都可以实现，EventBus的优点在于代码量少用起来方便，但是不能实现不同进程间的通信，比如监听系统时间变化等，这个只能用广播实现。
 
-###3.EventBus的使用
+###4.EventBus的使用
 
 1.下载EventBus库（https://github.com/greenrobot/EventBus.git） 放在工程目录libs中
 
@@ -110,11 +132,11 @@ Android系统的广播和开源库EventBus其实也是观察者模式的一种�
 
  * onEventAsync：使用这个函数作为订阅函数，那么无论事件在哪个线程发布，都会创建新的子线程在执行onEventAsync
 
-###4.源码分析
+###5.源码分析
 1.源码中一些重要的方法
 * getDefault 单例模式
 * register(Object subscriber, boolean sticky, int priority) 所有的注册方法最好都会调用这个方法
- ```
+ ``` 
  private synchronized void register(Object subscriber, boolean sticky, int priority) {
         //获取subscriber类中声明过的方法
         List subscriberMethods=this.subscriberMethodFinder.findSubscriberMethods(subscriber.getClass());
