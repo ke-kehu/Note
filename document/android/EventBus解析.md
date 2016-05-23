@@ -90,6 +90,8 @@ public interface Observer {
 
 ###2.java反射机制
 1.定义：在运行状态中，对于任意一个类，都能够知道这个类的所有属性和方法；对于任意一个对象，都能够调用它的任意一个方法和属性；这种动态获取的信息以及动态调用对象的方法的功能称为java语言的反射机制。
+
+
 2.EventBus中用的比较多的有
 * getDeclaredMethods()//获取类或者接口的所有方法，不包括继承的方法
 * method.getName()//获取方法名，用来过滤出onEvent开头的方法
@@ -136,7 +138,7 @@ Android系统的广播和开源库EventBus其实也是观察者模式的一种�
 1.源码中一些重要的方法
 * getDefault 单例模式
 * register(Object subscriber, boolean sticky, int priority) 所有的注册方法最好都会调用这个方法
- ``` 
+``` 
 private synchronized void register(Object subscriber, boolean sticky, int priority) {
         //获取subscriber类中声明过的方法
         List subscriberMethods=this.subscriberMethodFinder.findSubscriberMethods(subscriber.getClass());
@@ -146,7 +148,7 @@ private synchronized void register(Object subscriber, boolean sticky, int priori
             this.subscribe(subscriber, subscriberMethod, sticky, priority);
         }
     }
- ```
+```
 * List<SubscriberMethod> findSubscriberMethods(Class<?> subscriberClass) 获取类中的订阅方法
 ```
  List<SubscriberMethod> findSubscriberMethods(Class<?> subscriberClass) {
