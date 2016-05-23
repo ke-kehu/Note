@@ -343,7 +343,7 @@ private void filterSubscriberMethods(List<SubscriberMethod> subscriberMethods, H
                 Class eventType = (Class)var3.next();
                 this.unsubscribeByEventType(subscriber, eventType);
             }
-            this.typesBySubscriber.remove(subscriber);
+            this.typesBySubscriber.remove(subscriber);//remove解除绑定
         } else {
             Log.w(TAG, "Subscriber to unregister was not registered before: " + subscriber.getClass());
         }
