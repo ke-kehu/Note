@@ -137,7 +137,7 @@ Android系统的广播和开源库EventBus其实也是观察者模式的一种�
 * getDefault 单例模式
 * register(Object subscriber, boolean sticky, int priority) 所有的注册方法最好都会调用这个方法
  ``` 
- private synchronized void register(Object subscriber, boolean sticky, int priority) {
+private synchronized void register(Object subscriber, boolean sticky, int priority) {
         //获取subscriber类中声明过的方法
         List subscriberMethods=this.subscriberMethodFinder.findSubscriberMethods(subscriber.getClass());
         Iterator var5 = subscriberMethods.iterator();
